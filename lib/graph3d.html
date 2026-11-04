@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>记忆图谱 · 3D</title>
+  <link rel="stylesheet" href="/dsh-memory/view.css">
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div class="brand">
+        <span class="brand-mark"></span>
+        <span>记忆图谱</span>
+        <span id="stats" class="stats">加载中…</span>
+      </div>
+      <div class="actions">
+        <button id="auto" type="button" title="自动旋转">自动旋转</button>
+        <button id="reset" type="button" title="重置视角">重置</button>
+        <button id="full" type="button" title="全屏">全屏</button>
+        <button id="popout" type="button" title="在新窗口打开">独立窗口</button>
+      </div>
+    </header>
+    <main>
+      <section id="stage">
+        <canvas id="canvas" aria-label="记忆关系三维图"></canvas>
+        <div id="hint">拖动旋转 · 滚轮缩放 · 右键拖拽平移 · 点击节点</div>
+        <div id="loading">正在读取记忆池…</div>
+      </section>
+      <aside id="side">
+        <div class="side-title">分类图例</div>
+        <div id="legend" class="legend"></div>
+        <div class="side-title">选中节点</div>
+        <div id="detail" class="detail muted">点击任意节点查看详情</div>
+        <div id="relations" class="relations"></div>
+      </aside>
+    </main>
+  </div>
+  <script src="/dsh-memory/view.js"></script>
+</body>
+</html>
