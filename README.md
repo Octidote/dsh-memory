@@ -21,7 +21,7 @@
 把仓库克隆到本机后，在仓库根目录运行：
 
 ```powershell
-git clone https://github.com/Alive-kenan/dsh-memory.git
+git clone https://github.com/Alive-Kenan/dsh-memory.git
 cd dsh-memory
 node scripts/install.mjs desktop
 ```
