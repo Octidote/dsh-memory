@@ -9,7 +9,9 @@
 ## 特点
 
 - **一个本机共享池**：所有会话、所有工作区共用 `$DSH_HOME/storages/dsh-memory/memories.json`。
-- **零 token 自动记录**：用户真正输入的 prompt 和助手的最终回复都会在本地写入，不调用模型，不额外消耗 token；插件注入的 runtime context、技能目录、时间快照、工具调用中间步骤不会被误存。
+- **零 token 自动压缩摘要**：用户真正输入的 prompt 和助手最终回复只在本地抽取式压缩后入库（单条 ≤240 字），不保存完整对话，也不调用模型；插件注入的 runtime context、技能目录、时间快照、工具调用中间步骤不会被误存。
+- **密钥/隐私过滤**：入库前自动遮蔽私钥、API key、GitHub token、JWT、Bearer、密码等敏感片段，并把代码块、长链接替换为占位符。
+- **加密落盘**：记忆池用 AES-256-GCM 加密后写入 `memories.json`，密钥保存在同目录 `key.bin`（32 字节，仅当前用户可读）；旧版明文数据在首次加载时自动迁移为密文。
 - **克制的自动召回**：用本地 BM25 风格关键词匹配，只有相关度足够高时才注入；最多 2 条、总长不超过 760 字符，只在该轮第一步出现一次，且同一会话不会重复注入同一条记忆。
 - **模型可主动维护**：`memory` 工具支持 `search` / `save` / `forget`，适合保存稳定的偏好、环境事实和长期项目约定。
 - **自动分类**：每条记忆按标签和本地关键词自动归入 `偏好 / 项目 / 环境 / 事实 / 计划 / 人物 / 对话` 七类，不调用模型，也不额外消耗 token；列表和图谱都可按分类筛选。
@@ -40,18 +42,36 @@ node scripts/install.mjs desktop
 
 ## 数据结构
 
+`memories.json` 是加密信封，不再包含可读对话：
+
 ```json
 {
-  "version": 1,
-  "updatedAt": "2026-11-04T...",
+  "format": "dsh-memory",
+  "version": 2,
+  "encrypted": true,
+  "alg": "aes-256-gcm",
+  "iv": "base64…",
+  "tag": "base64…",
+  "data": "base64…",
+  "updatedAt": "2026-11-04T..."
+}
+```
+
+解密后的 payload：
+
+```json
+{
+  "version": 2,
   "memories": [
     {
       "id": "a0d80e9b",
-      "text": "用户偏好深色主题……",
+      "text": "用户：我更喜欢深色主题，界面要简洁克制。",
       "tags": ["偏好", "界面"],
-      "kind": "note",
+      "kind": "dialogue",
       "category": "preference",
-      "importance": 0.85,
+      "importance": 0.4,
+      "compressed": true,
+      "originalLength": 320,
       "hash": "…",
       "createdAt": "…",
       "updatedAt": "…",
@@ -63,9 +83,11 @@ node scripts/install.mjs desktop
 }
 ```
 
-- `kind: "note"` 是模型保存的长期记忆；`kind: "dialogue"` 是本地自动记录的用户 prompt 或助手最终回复。
+- `kind: "note"` 是模型保存的长期记忆；`kind: "dialogue"` 是本地自动压缩后的对话摘要。
+- `compressed` / `originalLength` 记录是否压缩以及压缩前长度。
 - `category` 是本地规则算出的分类；旧数据在加载时自动补分类。
 - 上限 2500 条，超出时按重要度、时效和类型淘汰。
+- 密钥：`$DSH_HOME/storages/dsh-memory/key.bin`。如需备份或迁移，必须同时保留 `memories.json` 和 `key.bin`；丢失密钥后旧记忆无法恢复。
 
 ## 开发
 
@@ -80,5 +102,6 @@ Host 半在 `lib/index.js`，客户端半在 `lib/client.js`（手写的 `__Modu
 ## 已知边界
 
 - 自动召回按关键词匹配，不做语义向量检索；同义改写可能召回不到。
-- 自动记录保存用户输入和助手的最终回复，跳过带工具调用的中间步骤；助手回复在产生时就会入库。
-- 记忆为明文 JSON，适合本机个人使用，不适合多用户共享主机。
+- 自动记录保存压缩后的用户输入和助手最终回复摘要，跳过带工具调用的中间步骤；助手回复在产生时就会入库。
+- 加密用于静态落盘保护；`key.bin` 与密文同目录，能读取当前用户文件的人仍可解密。不要把 `key.bin` 上传到仓库或云端。
+- 摘要为本地抽取式，不保证覆盖全部细节；需要长期精确保留的内容请用 `memory` 工具保存。
