@@ -20,7 +20,7 @@
 - **零 token 自动压缩摘要**：用户真正输入的 prompt 和助手最终回复只在本地抽取式压缩后入库（单条 ≤240 字），不保存完整对话，也不调用模型；插件注入的 runtime context、技能目录、时间快照、工具调用中间步骤不会被误存。
 - **密钥/隐私过滤**：入库前自动遮蔽私钥、API key、GitHub token、JWT、Bearer、密码等敏感片段，并把代码块、长链接替换为占位符。
 - **加密落盘**：记忆池用 AES-256-GCM 加密后写入 `memories.json` 快照，日常新增/删除/召回事件追加到 `memories.json.journal.jsonl`（每行一个独立加密事件），每 200 条或 512 KB 自动压实成新快照；密钥保存在同目录 `key.bin`（32 字节，仅当前用户可读）；旧版明文数据在首次加载时自动迁移为密文。
-- **数据安全**：同一数据目录只允许一个写入者（`memories.json.lock`，写入者 PID + 实例标识，异常退出后可接管）；写入采用「加密快照 + 加密追加日志」，每 200 条事件或 512 KB 自动压实，崩溃留下的半行日志会被忽略；启动时每 6 小时自动保留一份加密快照，迁移、清空、恢复前强制备份，备份保留最近 16 份；第二个进程自动进入只读模式，仍可查看和召回，但不会覆盖数据。面板「测试」页可立即备份或恢复最近备份。
+- **数据安全**：同一数据目录只允许一个写入者（`memories.json.lock`，写入者 PID + 实例标识，异常退出后可接管）；写入采用「加密快照 + 加密追加日志」，写文件执行 `fsync`，每 200 条事件或 512 KB 自动压实，崩溃留下的半行日志会被忽略；压实后即使日志截断失败，重放也会按快照 `revision`/`generation` 幂等跳过；启动时每 6 小时自动保留一份加密快照，迁移、清空、恢复前强制备份，备份保留最近 16 份；第二个进程自动进入只读模式，仍可查看和召回，但不会覆盖数据。面板「测试」页可立即备份、校验、导出/导入加密归档、恢复任意备份，恢复前会自动预检并备份当前数据。
 - **克制的自动召回（默认经典模式）**：本地 BM25 风格关键词匹配 + 同义词概念扩展 + 本地特征哈希向量余弦 + 分类上下文加权；同义改写（如“暗色/深色”“会议/开会”）和轻微拼写差异（如 `kubernetis` / `kubernetes`）也能命中。只有相关度足够高时才注入；最多 2 条、总长不超过 760 字符，只在该轮第一步出现一次，且同一会话不会重复注入同一条记忆。
 - **可选混合召回**：在面板「测试」页可一键切到混合模式，用 RRF 融合 BM25、向量、标签/分类三路排序，并加入置信度间隔、MMR 多样性和意图偏置。默认仍是经典模式，保持原有行为；切换后写入 `config.json`，可随时切回。
 - **回合记忆与可解释召回**：助手回复在 15 分钟内会与同一会话的上一条用户消息合并成一条 `episode`，避免用户和助手各存一条；「测试」页输入查询即可看到每条候选的 `score / bm25 / vector / coverage / reasons`，不调用模型、不注入对话。列表支持置顶 ★ 和屏蔽 ⊘，被屏蔽的记忆不再自动召回。
@@ -118,7 +118,7 @@ node scripts/install.mjs desktop
 - 配置文件：`$DSH_HOME/storages/dsh-memory/config.json`。默认 `recallMode: "legacy"`；可切换为 `"hybrid"`，也可调整 `maxItems`、`minScore`、`minCoverage`、`margin`、`diversity`、`queryExpansion`、`semantic`、`capture`。
 - 密钥：`$DSH_HOME/storages/dsh-memory/key.bin`。如需手动备份或迁移，必须同时保留 `memories.json`、`memories.json.journal.jsonl` 和 `key.bin`（或先让插件压实/使用面板备份）；丢失密钥后旧记忆无法恢复。
 - 追加日志：`$DSH_HOME/storages/dsh-memory/memories.json.journal.jsonl`，每条记录都是独立 AES-GCM 信封；写入时追加，每 200 条或 512 KB 自动压实为 `memories.json` 并清空日志。日志损坏只会影响无法解密的事件，不会静默覆盖快照。
-- 备份：`$DSH_HOME/storages/dsh-memory/backups/backup-<时间>-<原因>.json`，同样使用当前密钥加密；保留最近 16 份。`backups` API 可列出，`restore` 需要 `confirm: true`，恢复前会自动生成 `pre-restore` 备份。
+- 备份：`$DSH_HOME/storages/dsh-memory/backups/backup-<时间>-<原因>.json`，同样使用当前密钥加密；保留最近 16 份。`backups` 列出，`verify` 校验完整性和条数，`export` 返回 base64 加密归档，`import` 导入同密钥归档，`restore` 需要 `confirm: true`，恢复前会预检并自动生成 `pre-restore` 备份。
 - 写入锁：`$DSH_HOME/storages/dsh-memory/memories.json.lock`。只允许一个进程写入；其他进程状态显示为「只读」，不会覆盖数据。进程异常退出后，锁会根据 PID 存活状态和 24 小时超时自动接管。
 
 ## 开发
