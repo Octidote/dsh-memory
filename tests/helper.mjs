@@ -31,9 +31,11 @@ export async function loadApply() {
 export function makeCtx() {
   const tools = new Map();
   const disposers = [];
+  const listeners = new Map();
   let route;
   const ctx = {
     disposers,
+    listeners,
     logger: { info() {}, warn() {}, error() {} },
     route: () => route,
     effect(fn) {
@@ -41,7 +43,15 @@ export function makeCtx() {
       disposers.push(dispose);
       return dispose;
     },
-    on() { return () => {}; },
+    on(event, listener) {
+      const list = listeners.get(event) ?? [];
+      list.push(listener);
+      listeners.set(event, list);
+      return () => {
+        const index = list.indexOf(listener);
+        if (index >= 0) list.splice(index, 1);
+      };
+    },
     systemPrompt: { section() { return () => {}; } },
     tools: {
       register(definition) { tools.set(definition.name, definition); return () => {}; },
@@ -68,8 +78,19 @@ export async function closeStore(ctx) {
   await sleep(80);
 }
 
-export async function callApi(ctx, method, payload = {}) {
-  const body = JSON.stringify(payload);
+export async function runPreStep(ctx, payload) {
+  let decision = { kind: 'enter', messages: [...payload.messages] };
+  const at = `${new Date().toISOString()} pre-step`;
+  const signal = { throwIfAborted() {}, aborted: false, reason: undefined, at };
+  const request = { ...payload, signal };
+  for (const listener of ctx.listeners.get('agent/pre-step') ?? []) {
+    const previous = decision;
+    decision = await listener(request, async () => previous);
+  }
+  return decision;
+}
+
+export async function callApi(ctx, method, payload = {}) {  const body = JSON.stringify(payload);
   const req = {
     method: 'POST',
     url: `/dsh-memory/api/${method}`,
