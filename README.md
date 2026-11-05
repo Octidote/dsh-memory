@@ -20,7 +20,7 @@
 - **零 token 自动压缩摘要**：用户真正输入的 prompt 和助手最终回复只在本地做结构化抽取式压缩后入库（单条 ≤420 字，回合合并后 ≤760 字），保留开头结论、要点列表和结尾结论，不再把列表内容整个丢掉；不保存完整对话，也不调用模型；插件注入的 runtime context、技能目录、时间快照、工具调用中间步骤不会被误存。
 - **密钥/隐私过滤**：入库前自动遮蔽私钥、API key、GitHub token、JWT、Bearer、密码等敏感片段，并把代码块、长链接替换为占位符。
 - **加密落盘**：记忆池用 AES-256-GCM 加密后写入 `memories.json` 快照，日常新增/删除/召回事件追加到 `memories.json.journal.jsonl`（每行一个独立加密事件），每 200 条或 512 KB 自动压实成新快照；密钥保存在同目录 `key.bin`（32 字节，仅当前用户可读）；旧版明文数据在首次加载时自动迁移为密文。
-- **数据安全**：同一数据目录只允许一个写入者（`memories.json.lock`，写入者 PID + 实例标识，异常退出后可接管）；写入采用「加密快照 + 加密追加日志」，写文件执行 `fsync`，每 200 条事件或 512 KB 自动压实，崩溃留下的半行日志会被忽略；压实后即使日志截断失败，重放也会按快照 `revision`/`generation` 幂等跳过；启动时每 6 小时自动保留一份加密快照，迁移、清空、恢复前强制备份，备份保留最近 16 份；第二个进程自动进入只读模式，仍可查看和召回，但不会覆盖数据。面板「测试」页可立即备份、校验、导出/导入加密归档、恢复任意备份，恢复前会自动预检并备份当前数据。
+- **数据安全**：同一数据目录只允许一个写入者（`memories.json.lock`，写入者 PID + 实例标识，异常退出后可接管）；写入采用「加密快照 + 加密追加日志」，写文件执行 `fsync`，每 200 条事件或 512 KB 自动压实，崩溃留下的半行日志会被忽略；压实后即使日志截断失败，重放也会按快照 `revision`/`generation` 幂等跳过；启动时每 6 小时自动保留一份加密快照，迁移、清空、恢复前强制备份，备份保留最近 16 份；第二个进程自动进入只读模式，仍可查看和召回，但不会覆盖数据。面板「测试」页可立即备份、校验、导出/导入加密归档、恢复任意备份，恢复前会自动预检并备份当前数据。模型调用 `memory save/forget`、面板反馈/分类/删除/清空等显式写操作会等待落盘确认；写入失败时不会返回成功，事件保留在队列中按 5 秒起、最长 60 秒的退避自动重试，面板「数据安全」区显示最近一次写入错误。
 - **克制的自动召回（默认经典模式）**：本地 BM25 风格关键词匹配 + 同义词概念扩展 + 本地特征哈希向量余弦 + 分类上下文加权；同义改写（如“暗色/深色”“会议/开会”）和轻微拼写差异（如 `kubernetis` / `kubernetes`）也能命中。只有相关度足够高时才注入；最多 2 条、总长不超过 760 字符，只在该轮第一步出现一次，且同一会话不会重复注入同一条记忆。
 - **可选混合召回**：在面板「测试」页可一键切到混合模式，用 RRF 融合 BM25、向量、标签/分类三路排序，并加入置信度间隔、MMR 多样性和意图偏置。默认仍是经典模式，保持原有行为；切换后写入 `config.json`，可随时切回。
 - **回合记忆与可解释召回**：助手回复在 15 分钟内会与同一会话的上一条用户消息合并成一条 `episode`，避免用户和助手各存一条；摘要保留「要点」列表与「结论」结构。「测试」页输入查询即可看到每条候选的 `score / bm25 / vector / coverage / reasons`，不调用模型、不注入对话。列表支持置顶 ★ 和屏蔽 ⊘，被屏蔽的记忆不再自动召回。
@@ -121,15 +121,20 @@ node scripts/install.mjs desktop
 - 密钥：`$DSH_HOME/storages/dsh-memory/key.bin`。如需手动备份或迁移，必须同时保留 `memories.json`、`memories.json.journal.jsonl` 和 `key.bin`（或先让插件压实/使用面板备份）；丢失密钥后旧记忆无法恢复。
 - 追加日志：`$DSH_HOME/storages/dsh-memory/memories.json.journal.jsonl`，每条记录都是独立 AES-GCM 信封；写入时追加，每 200 条或 512 KB 自动压实为 `memories.json` 并清空日志。日志损坏只会影响无法解密的事件，不会静默覆盖快照。
 - 备份：`$DSH_HOME/storages/dsh-memory/backups/backup-<时间>-<原因>.json`，同样使用当前密钥加密；保留最近 16 份。`backups` 列出，`verify` 校验完整性和条数，`export` 返回 base64 加密归档，`import` 导入同密钥归档，`restore` 需要 `confirm: true`，恢复前会预检并自动生成 `pre-restore` 备份。
-- 写入锁：`$DSH_HOME/storages/dsh-memory/memories.json.lock`。只允许一个进程写入；其他进程状态显示为「只读」，不会覆盖数据。进程异常退出后，锁会根据 PID 存活状态和 24 小时超时自动接管。
+- 写入锁：`$DSH_HOME/storages/dsh-memory/memories.json.lock`。只允许一个进程写入；其他进程状态显示为「只读」，不会覆盖数据。锁是否过期**只按持有者 PID 是否存活判断**：进程还活着时，锁存在多久都不会被新进程接管；只有 PID 已不存在（或锁记录损坏）才会被当作遗留锁清理。写入前还会再次核对锁实例，避免竞争覆盖。
 
 ## 开发
 
 ```powershell
+node scripts/install.mjs desktop
+npm test        # 锁 / 持久化确认 / JSONL + 压实 / 加密 / 召回 / 图谱
+npm run eval    # 70 条标注查询，输出 Hit@1/2、MRR、误召回率
 node --check lib/index.js
 node --check lib/client.js
-node scripts/install.mjs desktop
+node --check lib/graph3d.js
 ```
+
+测试需要先安装一次插件，以便 `@deepseek-ai/*` 从 DSH profile 解析；也可以设置 `DSH_MEMORY_HOST` 指向任意已安装副本。测试使用独立临时 `DSH_HOME`，不会修改真实记忆池。可复现测试位于 `tests/`，评测脚本位于 `tools/eval-recall.mjs`。
 
 Host 半在 `lib/index.js`，客户端半在 `lib/client.js`（手写的 `__ModuleLoader__` bundle，无需打包）。接口为同源 `POST /dsh-memory/api/{list|add|feedback|delete|clear|config|recall|flags|classify|backups|backup|restore}`。
 
