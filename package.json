@@ -1,6 +1,6 @@
 {
   "name": "dsh-memory",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "private": true,
   "description": "One shared, local-first memory pool for every DeepSeek Harness conversation.",
   "license": "MIT",
@@ -8,8 +8,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "check": "node --check lib/index.js && node --check lib/client.js && node --check lib/graph3d.js",
-    "test": "node tests/lock.test.mjs && node tests/persistence.test.mjs && node tests/storage.test.mjs && node tests/security.test.mjs && node tests/recall.test.mjs && node tests/graph.test.mjs && node tests/innovations.test.mjs",
+    "check": "node --check lib/index.js && node --check lib/client.js && node --check lib/graph3d.js && node --check lib/update.js && node --check scripts/pack-update.mjs",
+    "test": "node tests/lock.test.mjs && node tests/persistence.test.mjs && node tests/storage.test.mjs && node tests/security.test.mjs && node tests/recall.test.mjs && node tests/graph.test.mjs && node tests/innovations.test.mjs && node tests/update.test.mjs",
+    "pack:update": "node scripts/pack-update.mjs",
     "eval": "node tools/eval-recall.mjs"
   },
   "type": "module",

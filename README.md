@@ -44,6 +44,16 @@ node scripts/install.mjs desktop
 
 > 注意：不要用 `link:` 或目录联接安装。DSH 的 ESM 拦截只对 profile 内的真实路径生效，符号链接会导致启动时报 `ERR_MODULE_NOT_FOUND: @deepseek-ai/dsh-llm`。
 
+### 更新
+
+从 0.18.0 起，侧栏会检查 GitHub 的正式 Release。有兼容更新时，「记忆」旁会出现「更新」。点击后下载并校验更新包，看到「重启生效」后重新打开 DSH。已有记忆仍存储在原来的本地记忆池。更早的版本可以按上面的方式手动升级一次。
+
+发布新版时，先更新 `package.json` 的版本号并在对应提交上打标签（例如 `v0.19.0`）。从该提交生成更新包，并把 `dsh-memory-update.json` 上传为 GitHub 正式 Release 的附件。检查使用最新正式 Release，普通提交和预发布不会触发更新。
+
+```powershell
+npm run pack:update -- (Join-Path $env:TEMP 'dsh-memory-update.json')
+```
+
 ## 使用
 
 - 侧边栏底部点击「记忆」打开面板。
